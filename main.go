@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	tgbotapi "github.com/Syfaro/telegram-bot-api"
-	_ "golang.org/x/net/html"
 	"io/ioutil"
 	"log"
 	"net/http"
-	_ "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -17,15 +15,15 @@ import (
 
 type Posts []Post
 type Post struct {
-	Id int
+	Id      int
 	Content ContextInfo
-	Type string
+	Type    string
 }
 type ContextInfo struct {
 	Rendered string
 }
 
-func main(){
+func main() {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
 		log.Panic(err)
@@ -34,25 +32,22 @@ func main(){
 	bot.Debug = true
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-
 	var ucfg = tgbotapi.NewUpdate(0)
 	ucfg.Timeout = 60
+	chanPost := make(chan string)
+	go getPosts(&chanPost)
+	chatID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"), 10, 64)
+	for msgImg := range chanPost {
 
-	chPosts := getPosts()
-	chatID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"),10, 64)
-		for _, msgImg := range chPosts {
-			fmt.Println(msgImg)
+		msg := tgbotapi.NewPhotoShare(chatID, msgImg)
+		bot.Send(msg)
 
-			msg := tgbotapi.NewPhotoShare(chatID, msgImg)
-			bot.Send(msg)
-
-			fmt.Println(msg)
-		}
+		fmt.Println(msg)
+	}
 }
 
-
-func getPosts() []string{
-	var out  []string
+func getPosts(postChan *chan string) []string {
+	var out []string
 	var err error
 	r, err := http.Get(os.Getenv("URL_API"))
 	if err != nil {
@@ -66,7 +61,7 @@ func getPosts() []string{
 	if err != nil {
 		log.Fatal(err)
 	}
-	postHtml := strings.Join(strings.Split(data[0].Content.Rendered, "\n"),"")
+	postHtml := strings.Join(strings.Split(data[0].Content.Rendered, "\n"), "")
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(postHtml))
 	if err != nil {
 		log.Fatal(err)
@@ -76,10 +71,9 @@ func getPosts() []string{
 	doc.Find("p").Each(func(i int, s *goquery.Selection) {
 		imagesUrl, _ := s.Find("img").Attr("src")
 		if imagesUrl != "" {
+			*postChan <- imagesUrl
 			out = append(out, imagesUrl)
 		}
 	})
 	return out
 }
-
-
